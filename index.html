@@ -75,10 +75,7 @@ let peer = new Peer();
 const params = new URLSearchParams(location.search);
 const peerId = params.get("peer");
 
-let players=[],questions=[],currentQ=0,gameActive=false;
-let answers={}; // oyuncu cevapları
-let countdownTimer;
-
+let players=[],questions=[],currentQ=0,answers={},countdownTimer;
 const allQuestions=[
   {q:"Türkiye'nin başkenti?", options:["İstanbul","Ankara","İzmir","Bursa"], answer:"Ankara"},
   {q:"En büyük gezegen?", options:["Mars","Jüpiter","Venüs","Merkür"], answer:"Jüpiter"},
@@ -86,7 +83,6 @@ const allQuestions=[
   {q:"2+2 kaç eder?", options:["3","4","5","6"], answer:"4"},
   {q:"Hangisi bir meyvedir?", options:["Elma","Havuç","Patates","Lahana"], answer:"Elma"}
 ];
-
 function shuffle(a){return a.sort(()=>0.5-Math.random());}
 
 /* ================= HOST ================= */
@@ -107,6 +103,10 @@ peer.on("connection",c=>{
     }
     if(d.type==="answer"){
       answers[d.peer]=d.answer;
+      // eğer herkes cevapladıysa süreyi bitir
+      if(Object.keys(answers).length>=players.length){
+        endQuestion();
+      }
     }
   });
 });
@@ -122,7 +122,7 @@ function sendQuestion(){
     const conn = peer.connections[p.peer]?.[0];
     if(conn) conn.send({type:"question",question});
   });
-  questionText.innerText = question.q;
+  questionText.innerText = questions[currentQ].q;
   timerDiv.innerText = "20 saniye";
   let time=20;
   clearInterval(countdownTimer);
@@ -135,14 +135,13 @@ function sendQuestion(){
 
 function endQuestion(){
   clearInterval(countdownTimer);
-  // doğru cevapları kaydet
   const correct = questions[currentQ].answer;
   resultsDiv.innerHTML="<h3>Sonuçlar:</h3>";
   players.forEach(p=>{
-    const ans = answers[p.peer]||"Hiç cevap yok";
+    const ans = answers[p.peer] || "Hiç cevap yok";
     const isCorrect = ans===correct;
     if(isCorrect) p.score++;
-    resultsDiv.innerHTML+=`${p.name}: ${ans} ${isCorrect?"✅":"❌"}<br>`;
+    resultsDiv.innerHTML += `${p.name}: ${ans} ${isCorrect?"✅":"❌"}<br>`;
   });
   renderOrder();
   currentQ++;
