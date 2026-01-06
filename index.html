@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Aile Quiz Oyunu</title>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+*{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+body{margin:0;background:#000;color:#fff;font-family:Arial, sans-serif;overflow:hidden}
+#setup,#nameScreen,#mobile,#overlay{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+#setup, #overlay{z-index:10}
+#overlay{display:none;background:rgba(0,0,0,0.9);padding:20px;border-radius:10px;}
+#countdown{position:absolute;inset:0;display:none;justify-content:center;align-items:center;font-size:150px;font-weight:bold;z-index:20}
+#qrcode{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
+#playerCount,#order{font-size:20px;margin-top:10px}
+#mobile{display:none;background:#000}
+.pad{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;width:90%}
+.btn{font-size:40px;border:2px solid #fff;border-radius:15px;padding:20px;color:#fff;background:rgba(255,255,255,0.1)}
+#lock{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,.7);font-size:40px;color:#fff;z-index:5}
+button{font-size:25px;padding:10px;margin:10px}
+</style>
+</head>
+
+<body>
+
+<div id="setup">
+  <h1>Aile Quiz Oyunu</h1>
+  <div id="qrcode"></div>
+  <div id="playerCount">Oyuncular: 0</div>
+  <div id="order"></div>
+  <button id="newRoundBtn">Yeni Tur Başlat</button>
+</div>
+
+<div id="overlay"></div>
+<div id="nameScreen" style="display:none">
+  <h1>Aile Quiz Oyunu</h1>
+  <h2>İsmini Gir</h2>
+  <input id="playerName">
+  <button id="joinBtn">KATIL</button>
+</div>
+
+<div id="mobile">
+  <div id="lock">Sıranı Bekle</div>
+  <div class="pad">
+    <div id="A" class="btn">A</div>
+    <div id="B" class="btn">B</div>
+    <div id="C" class="btn">C</div>
+    <div id="D" class="btn">D</div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("contextmenu", e=>e.preventDefault());
+const setup = document.getElementById("setup");
+const overlay = document.getElementById("overlay");
+const playerCount = document.getElementById("playerCount");
+const order = document.getElementById("order");
+const countdown = document.getElementById("countdown");
+const nameScreen = document.getElementById("nameScreen");
+const mobile = document.getElementById("mobile");
+const playerName = document.getElementById("playerName");
+const joinBtn = document.getElementById("joinBtn");
+const newRoundBtn = document.getElementById("newRoundBtn");
+
+let peer = new Peer();
+const params = new URLSearchParams(location.search);
+const peerId = params.get("peer");
+
+let players=[],currentIndex=0,activePeer=null,questions=[],currentQ=0,gameActive=false;
+
+/* =================== HOST =================== */
+if(!peerId){
+
+  peer.on("open",id=>{
+    let url=new URL(location.href);
+    url.searchParams.set("peer",id);
+    new QRCode(document.getElementById("qrcode"),{text:url.toString(),width:250,height:250});
+  });
+
+  peer.on("connection",c=>{
+    c.on("data",d=>{
+      if(d.type==="join"){
+        players.push({peer:c.peer,name:d.name,score:0});
+        playerCount.innerText=`Oyuncular: ${players.length}`;
+        renderOrder();
+      }
+      if(d.type==="answer" && c.peer===activePeer){
+        const p = players.find(pl=>pl.peer===c.peer);
+        checkAnswer(p,d.answer);
+      }
+    });
+  });
+
+  function renderOrder(){
+    order.innerHTML="<h2>Oyun Sırası</h2>"+players.map((p,i)=>`${i+1}. ${p.name} - ${p.score} puan`).join("<br>");
+  }
+
+  function startTurn(){
+    if(players.length===0) return;
+    if(currentQ>=questions.length){
+      overlay.innerHTML="<h1>Tur Bitti!</h1><p>Tüm oyuncular tamamladı.</p>";
+      overlay.style.display="flex";
+      return;
+    }
+    const p = players[currentIndex % players.length];
+    activePeer = p.peer;
+    overlay.innerHTML=`<h1>Şimdi Oynuyor:</h1><h2>${p.name}</h2>`;
+    overlay.style.display="flex";
+
+    // tüm bağlantılara aktif peer bilgisini gönder
+    players.forEach(pl=>{
+      const conn = peer.connections[pl.peer]?.[0];
+      if(conn) conn.send({type:"active",activePeerId:activePeer,question:questions[currentQ]});
+    });
+
+    setTimeout(()=>{
+      overlay.style.display="none";
+    },1000);
+  }
+
+  function checkAnswer(player,ans){
+    const correct = questions[currentQ].answer;
+    if(ans===correct) player.score++;
+    currentQ++;
+    renderOrder();
+    currentIndex++;
+    startTurn();
+  }
+
+  function newRound(){
+    // Kolay sorular
+    const allQuestions=[
+      {q:"Türkiye'nin başkenti?", options:["İstanbul","Ankara","İzmir","Bursa"], answer:"Ankara"},
+      {q:"En büyük gezegen?", options:["Mars","Jüpiter","Venüs","Merkür"], answer:"Jüpiter"},
+      {q:"Renklerden hangisi gökyüzü rengidir?", options:["Mavi","Kırmızı","Yeşil","Siyah"], answer:"Mavi"},
+      {q:"2+2 kaç eder?", options:["3","4","5","6"], answer:"4"},
+      {q:"Hangisi bir meyvedir?", options:["Elma","Havuç","Patates","Lahana"], answer:"Elma"}
+    ];
+    // soruları rastgele sırala
+    questions = allQuestions.sort(()=>0.5-Math.random());
+    currentQ = 0;
+    currentIndex = 0;
+    gameActive=true;
+    startTurn();
+  }
+
+  newRoundBtn.addEventListener("click",newRound);
+
+}else{
+  /* =================== MOBILE =================== */
+  setup.style.display="none";
+  nameScreen.style.display="flex";
+
+  peer.on("open",()=>{
+    const conn=peer.connect(peerId);
+
+    const sendJoin=()=>{
+      const name=playerName.value.trim();
+      if(!name) return alert("Lütfen isim girin");
+      conn.send({type:"join",name});
+      nameScreen.style.display="none";
+      mobile.style.display="flex";
+    };
+
+    joinBtn.addEventListener("click",sendJoin);
+    joinBtn.addEventListener("touchstart",e=>{ e.preventDefault(); sendJoin(); },{passive:false});
+
+    conn.on("data",d=>{
+      if(d.type==="active"){
+        const lock=document.getElementById("lock");
+        if(peer.id===d.activePeerId){
+          lock.style.display="none";
+          showQuestion(d.question);
+        }else{
+          lock.style.display="flex";
+        }
+      }
+    });
+
+    ["A","B","C","D"].forEach(k=>{
+      const el=document.getElementById(k);
+      el.addEventListener("touchstart",e=>{
+        e.preventDefault();
+        if(document.getElementById("lock").style.display==="none"){
+          conn.send({type:"answer",answer:k});
+        }
+      },{passive:false});
+    });
+  });
+
+  function showQuestion(q){
+    ["A","B","C","D"].forEach((k,i)=>{
+      const el=document.getElementById(k);
+      el.innerText = `${k}. ${q.options[i]}`;
+    });
+  }
+}
+</script>
+</body>
+</html>
