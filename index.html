@@ -70,12 +70,14 @@ const newRoundBtn = document.getElementById("newRoundBtn");
 const questionText = document.getElementById("questionText");
 const timerDiv = document.getElementById("timer");
 const resultsDiv = document.getElementById("results");
+const qrcodeDiv = document.getElementById("qrcode");
 
 let peer = new Peer();
 const params = new URLSearchParams(location.search);
 const peerId = params.get("peer");
 
 let players=[],questions=[],currentQ=0,answers={},countdownTimer;
+
 const allQuestions=[
   {q:"Türkiye'nin başkenti?", options:["İstanbul","Ankara","İzmir","Bursa"], answer:"Ankara"},
   {q:"En büyük gezegen?", options:["Mars","Jüpiter","Venüs","Merkür"], answer:"Jüpiter"},
@@ -83,6 +85,7 @@ const allQuestions=[
   {q:"2+2 kaç eder?", options:["3","4","5","6"], answer:"4"},
   {q:"Hangisi bir meyvedir?", options:["Elma","Havuç","Patates","Lahana"], answer:"Elma"}
 ];
+
 function shuffle(a){return a.sort(()=>0.5-Math.random());}
 
 /* ================= HOST ================= */
@@ -91,7 +94,7 @@ if(!peerId){
 peer.on("open",id=>{
   let url=new URL(location.href);
   url.searchParams.set("peer",id);
-  new QRCode(document.getElementById("qrcode"),{text:url.toString(),width:250,height:250});
+  new QRCode(qrcodeDiv,{text:url.toString(),width:250,height:250});
 });
 
 peer.on("connection",c=>{
@@ -103,7 +106,6 @@ peer.on("connection",c=>{
     }
     if(d.type==="answer"){
       answers[d.peer]=d.answer;
-      // eğer herkes cevapladıysa süreyi bitir
       if(Object.keys(answers).length>=players.length){
         endQuestion();
       }
@@ -116,13 +118,18 @@ function renderOrder(){
 }
 
 function sendQuestion(){
+  // QR kod ve Yeni Tur butonunu gizle
+  qrcodeDiv.style.display="none";
+  newRoundBtn.style.display="none";
+  resultsDiv.innerHTML="";
+
   answers={};
   let question = questions[currentQ];
   players.forEach(p=>{
     const conn = peer.connections[p.peer]?.[0];
     if(conn) conn.send({type:"question",question});
   });
-  questionText.innerText = questions[currentQ].q;
+  questionText.innerText = question.q;
   timerDiv.innerText = "20 saniye";
   let time=20;
   clearInterval(countdownTimer);
@@ -150,6 +157,9 @@ function endQuestion(){
   }else{
     overlay.innerHTML="<h1>Tur Bitti!</h1>";
     overlay.style.display="flex";
+    // QR kod ve Yeni Tur butonunu tekrar göster
+    qrcodeDiv.style.display="block";
+    newRoundBtn.style.display="block";
   }
 }
 
@@ -157,7 +167,6 @@ function newRound(){
   questions = shuffle(allQuestions);
   currentQ=0;
   overlay.style.display="none";
-  resultsDiv.innerHTML="";
   sendQuestion();
 }
 
